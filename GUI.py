@@ -5,7 +5,7 @@
 
 GUI for NikCut program
 
-:REQUIRES: ...
+:REQUIRES: ImageMagick installed
 :PRECONDITION: ...
 :POSTCONDITION: ...
 
@@ -29,15 +29,12 @@ from PIL import Image, ImageTk, ImageDraw, ImageChops
 import time
 from collections import namedtuple
 import pickle
-from display import DisplayImage
+from display_cv2 import DisplayImage
 
 
 
 class NikCut_GUI(Tkinter.Tk):
 
-    modes = ('2 Cameras',
-             'Road View',
-             '3 Cameras' )
 
     def load_settings(self, run_location ):
         try:
@@ -57,6 +54,8 @@ class NikCut_GUI(Tkinter.Tk):
                                 selectedImage = 0,
                                 focalPixel = (0.5,0.5),
                                 sobel = False,
+                                recent_filenames = [],
+                                scale = 1.0,
                                 )
             with open( run_location + '\settings.ini', 'w' ) as wfile:
                 pickle.dump(self.settings, wfile)
@@ -71,6 +70,7 @@ class NikCut_GUI(Tkinter.Tk):
         self.initialize()
 
     def initialize(self):
+        self.run_location = os.getcwd()
         self.load_settings( os.getcwd() )
 
         try:
@@ -96,6 +96,9 @@ class NikCut_GUI(Tkinter.Tk):
 
         self.update()
         self.canvas.bind('<Configure>', self.resize )
+
+        # FINISHED GUI SETUP
+        self.load_images()
 
         self.print_settings( 'Settings on initialization' )
 
@@ -158,8 +161,9 @@ class NikCut_GUI(Tkinter.Tk):
 #        self.canvas.bind("<ButtonRelease-3>", self.drawOnCanvas)
         self.canvas.bind("<B1-Motion>", self.shiftImage)
         self.bind("<Key>", self.keypress)
+        self.bind("<Delete>", self.deletekey)
 
-#        self.canvas.bind_all("<MouseWheel>", self.rollWheel)
+        self.canvas.bind_all("<MouseWheel>", self.rollWheel)
 
         self.canvas.pack(side=Tkinter.RIGHT, expand=Tkinter.YES, fill=Tkinter.BOTH)
 
@@ -182,8 +186,8 @@ class NikCut_GUI(Tkinter.Tk):
         """Load the images from the list of filenames."""
         if len(self.settings['filenames']) > 0:
             self.disp_images = []
-            for i, filename in enumerate( self.settings['filenames'] ):
-                self.disp_images.append( DisplayImage( Image.open(filename), i ) )
+            for filename in self.settings['filenames']:
+                self.disp_images.append( DisplayImage( filename ) )
 
 
         self.show_images()
@@ -239,7 +243,7 @@ class NikCut_GUI(Tkinter.Tk):
                                                each.anchor[1]+tileW - self.settings['tileborder'],  ),
                                                width=4, outline='yellow')
 
-            self.image = each.image(sobel=self.settings['sobel'])
+            self.image = each.image(sobel=self.settings['sobel'], scale=self.settings['scale'])
             self.canvas.create_image(each.anchor, image=self.image, anchor=Tkinter.NW, tags='image' )
 
 
@@ -273,39 +277,10 @@ class NikCut_GUI(Tkinter.Tk):
     def resize(self, event):
         self.settings['maxWidth'] = event.width
         self.settings['maxHeight'] = event.height
+        self.settings['geometry'] = str(event.width) + 'x' + str(event.height) + '+0+0'
         self.canvas.config(width = event.width, height = event.height)
 
         self.show_images()
-        # REFIT IMAGES TO CANVAS AND RESET ANCHORING
-#        imlist = self.disp_images
-#        if self.mode.get() == self.modes[0]: # 2 camera mode
-#            for i, dimage in enumerate(imlist[:2]):
-#                if dimage:
-#                    dimage.set_fit((event.width/2, event.height ))
-#                else:
-#                    break
-#            if i == 1:
-#                imlist[1].anchor = (imlist[0].box_span()[0], 0)
-#        elif self.mode.get() == self.modes[1] : # Road View mode
-#            for i, dimage in enumerate(imlist[:3]):
-#                if dimage:
-#                    dimage.set_fit((event.width, event.height/3 ))
-#                else:
-#                    break
-#            if i == 2:
-#                imlist[1].anchor = (0,imlist[0].box_span()[1])
-#                imlist[2].anchor = (0,imlist[0].box_span()[1]*2)
-#        elif self.mode.get() == self.modes[2]: # 3 Cameras mode
-#            for i, dimage in enumerate(imlist[:3]):
-#                if dimage:
-#                    dimage.set_fit((event.width/3, event.height ))
-#                else:
-#                    break
-#            if i == 2:
-#                imlist[1].anchor = (imlist[0].box_span()[0], 0)
-#                imlist[2].anchor = (imlist[0].box_span()[0]*2, 0)
-
-#        self.refresh_display()
 
 
 
@@ -325,6 +300,7 @@ class NikCut_GUI(Tkinter.Tk):
 
             self.show_images()
 
+
     def shiftImage(self, event):
         if event.widget == self.canvas:
             imN = self.settings['selectedImage']
@@ -341,38 +317,42 @@ class NikCut_GUI(Tkinter.Tk):
 
             self.show_images()
 
+
+
     def endMotion(self, event):
         self.inmotion = False
 
 
     def rollWheel(self, event):
 #        print event.state
-        self.canvas.delete(Tkinter.ALL)
+#        self.canvas.delete(Tkinter.ALL)
+
         # IF WHEEL TURNED, NOT HELD DOWN
         if event.state == 8 or event.state == 10: # 10 is with caps lock
             try:
                 if event.delta > 0:
-                    self.image_manager('next')
+                    self.settings['scale'] += 0.1
                 elif event.delta < 0:
-                    self.image_manager('prev')
+                    self.settings['scale'] -= 0.1
             except Warning:
                 return
+
         # IF WHEEL BUTTON DOWN AND TURNED
         if event.state == 520 or event.state == 522:
-            n = self.camera()
-            if event.delta > 0:
-                self.camera( (n+1) % 5 )
-            elif event.delta < 0:
-                self.camera( (n+4) % 5 )
+            pass
 
-        self.get_thumbs()
-        self.refresh_display()
+        self.show_images()
+
+
 
     def keypress(self, event):
         if event.char == 's':
             self.settings['sobel'] = (False if self.settings['sobel'] else True)
 
             self.show_images()
+
+    def deletekey(self, event):
+
 
 
     def refresh_display(self):
@@ -514,6 +494,9 @@ class NikCut_GUI(Tkinter.Tk):
 
 
     def endsession(self):
+        with open( self.run_location + '\settings.ini', 'w' ) as wfile:
+            pickle.dump(self.settings, wfile)
+        wfile.close()
         self.quit()
     #-----End of ladybug methods
 
