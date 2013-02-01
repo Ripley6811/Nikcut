@@ -226,6 +226,7 @@ class NikCut_GUI(Tkinter.Tk):
 
         # Crop, anchor and display each image
         for i, each in enumerate( self.disp_images ):
+
             # Set the cropping for display
             each.set_box( (int(each.size[0] * self.settings['focalPixel'][0]) + self.settings['tileborder'],
                            int(each.size[1] * self.settings['focalPixel'][1]) + self.settings['tileborder'],
@@ -246,6 +247,15 @@ class NikCut_GUI(Tkinter.Tk):
             self.image = each.image(sobel=self.settings['sobel'], scale=self.settings['scale'])
             self.canvas.create_image(each.anchor, image=self.image, anchor=Tkinter.NW, tags='image' )
 
+            # Overlay info and icons
+            nefcolor = 'green' if os.path.isfile( each.filename[:-4] + '.nef' ) else 'red'
+            self.canvas.create_text( (each.anchor[0]+15, each.anchor[1]+15), text='NEF', anchor=Tkinter.NW,
+                                   fill=nefcolor)
+
+#        self.win1 = Tkinter.Canvas(self.canvas, width=200, height=200)
+#        self.canvas.create_window((30,30), anchor=Tkinter.NW, window=self.win1, tags='imwin')
+#        self.win1.create_rectangle( (-100,-10,140,140), fill='yellow' )
+#        self.win1.create_image( (100,100), image=self.image, anchor=Tkinter.NW, tags='image')
 
 
     def change_mode(self):
@@ -352,7 +362,7 @@ class NikCut_GUI(Tkinter.Tk):
             self.show_images()
 
     def deletekey(self, event):
-
+        pass
 
 
     def refresh_display(self):
