@@ -54,7 +54,7 @@ from scipy import misc
 #===============================================================================
 # METHODS
 #===============================================================================
-testim = r"C:\SkyDrive\Photos dated\2013 01 (Jan)\2013-01-05 11.09.42.jpg"
+testim = r"C:\Dropbox\Photos\2013 02 (Feb)\2013-02-01 18.46.51.jpg"
 rawim = r"C:\My Box Files\My Pictures\NEF RAW\2013-01-08 09.42.49-1.nef"
 
 
@@ -83,12 +83,23 @@ def main():
 #    im0 = DisplayImage( ID=testim, image=im )
 
     info = im1._getexif()
+    d = dict()
     for tag in info:
-#       try:
-            print repr(TAGS.get(tag)),
-            if repr(TAGS.get(tag)) != repr('ComponentsConfiguration'):
-                print 'inner'
-                print info.get(tag)
+        d[TAGS.get(tag)] = info.get(tag)
+#            print tag
+##       try:
+#            print repr(TAGS.get(tag)),
+#            if repr(TAGS.get(tag)) != repr('ComponentsConfiguration'):
+#                print 'inner',
+#                print info.get(tag)
+
+    print 'Model:', d['Model']
+    print 'Exposure:', d['ExposureTime'][0]/float(d['ExposureTime'][1]), '(1/'+str(d['ExposureTime'][1]/d['ExposureTime'][0]) + ')'
+    print 'Aperture: f/' + str( d['FNumber'][0]/float(d['FNumber'][1]) )
+    print 'FocalLength:', d['FocalLength'][0]/float(d['FocalLength'][1]), 'mm'
+    print 'ISO speed:', d['ISOSpeedRatings']
+    print 'Flash Used:', 'Yes' if d['Flash'] else 'No'
+    print d
 #       except KeyError:
 #           print "error", tag
 

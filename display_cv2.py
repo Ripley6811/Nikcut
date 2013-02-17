@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Display image management class (OpenCV version).
+Display image management class.
 
 This class stores a full-size image and display position. It allows extraction
 of a thumbnail of any size, converting points from display location to image
-location. Previous version used PIL. This version will rely on OpenCV.
+location. Went from PIL to trying OpenCV, but I get images displayed faster
+in Tkinter with PIL.
 
 
 :REQUIRES: ...
@@ -33,9 +34,10 @@ __version__ = '0.1'
 #===============================================================================
 # IMPORT STATEMENTS
 #===============================================================================
-from PIL import Image, ImageDraw, ImageTk, ImageChops, ImageFilter
+from PIL import Image, ImageDraw, ImageTk, ExifTags, ImageFilter
 from numpy import *  # IMPORTS ndarray(), arange(), zeros(), ones()
 import cv2
+import os
 
 
 #===============================================================================
@@ -49,28 +51,54 @@ class DisplayImage:
         '''
         self.ID = ID
         self.filename = filename
-        self.im = cv2.imread(filename) # <type 'numpy.ndarray'>
-        y,x,b = self.im.shape
-        self.size = x,y
+        self.im = Image.open(filename) # <type 'numpy.ndarray'>
+#        print os.getcwd()
+#        print filename, self.im
+#        y,x,b =
+        self.size = self.im.size
         self.scale = scale
         self.fit = fit # SET THE RETURN SCALING BY THE AREA IT MUST FIT INSIDE
         self.anchor = anchor # WHERE TOPLEFT OF IMAGE WILL BE PLACED IN DISPLAY AREA
-        self.cropbox = (0, 0, x, y)
+        self.cropbox = (0, 0, self.size[0], self.size[1])
 
         self.fit_scale() # OVERRIDES SCALE PARAMETER IF FIT IS SET
 
+        self.thumbnail = None
+        self.focus = (self.size[0]/2,self.size[1]/2)
+
+        self.exif = dict()
+        info = self.im._getexif()
+        for tag in info:
+            self.exif[ExifTags.TAGS.get(tag)] = info.get(tag)
 
 
-    def set_box(self, box):
+
+    def set_box(self, box, pixel):
         '''Set the display region of image.
 
         Arg is a 4-tuple defining the left, upper, right, and lower pixel
         coordinate. Same as in the crop method of PIL Image class.
         '''
-#        assert box[0] >=0 and box[1] >= 0
-        assert box[2] <= self.size[0] and box[3] <= self.size[1]
-        self.cropbox = box
+        newbox = list(box)
+        print box
+        boxW = box[2] - box[0]
+        if box[0] < 0:
+            newbox[0] -= box[0]
+            newbox[2] -= box[0]
+        if box[1] < 0:
+            newbox[1] -= box[1]
+            newbox[3] -= box[1]
+        if box[2] > self.size[0] - boxW:
+            newbox[0] -= box[2] - self.size[0] - boxW
+            newbox[2] -= box[2] - self.size[0] - boxW
+        if box[3] > self.size[1] - boxW:
+            newbox[1] -= box[3] - self.size[1] - boxW
+            newbox[3] -= box[3] - self.size[1] - boxW
+
+        self.cropbox = newbox
         self.fit_scale()
+
+
 
     def move_box(self, dx, dy):
         a,b,c,d = self.cropbox
@@ -78,7 +106,7 @@ class DisplayImage:
 
 
 
-    def set_fit(self, dxdy):
+    def set_fit(self, dxdy, zoom=False):
         '''Set desired size in pixels of final return image.
 
         :PARAMETERS:
@@ -87,6 +115,8 @@ class DisplayImage:
         '''
         assert dxdy[0] > 0 and dxdy[1] > 0
         self.fit = tuple(dxdy)
+        if zoom:
+            self.fit = 10000,dxdy[1]
         self.fit_scale()
 
 
@@ -96,6 +126,52 @@ class DisplayImage:
             cropsize = (self.cropbox[2] - self.cropbox[0], self.cropbox[3] - self.cropbox[1])
             self.scale = min(self.fit[0] / float(cropsize[0]), self.fit[1] / float(cropsize[1]))
 
+
+    def set_thumbnail(self, tsize, zoom=False):
+        self.thumbnail = self.im.copy()
+        if zoom:
+            scale = max(tsize[0]/float(self.size[0]),tsize[1]/float(self.size[1]))
+            self.thumbnail = self.im.resize( tuple( int(x * scale) for x in self.size) )
+            yoffset = (self.thumbnail.size[0] - tsize[0]) / 2
+            xoffset = (self.thumbnail.size[1] - tsize[1]) / 2
+            self.thumbnail = self.thumbnail.crop( (yoffset,
+                                                   xoffset,
+                                                   self.thumbnail.size[0]-yoffset,
+                                                   self.thumbnail.size[1]-xoffset ) )
+            self.thumbnail = ImageTk.PhotoImage( self.thumbnail )
+        else:
+            scale = min(tsize[0]/float(self.size[0]),tsize[1]/float(self.size[1]))
+
+            self.thumbnail = self.im.resize( tuple( int(x * scale) for x in self.size) )
+            self.thumbnail = ImageTk.PhotoImage( self.thumbnail )
+        self.scale = scale
+
+
+    def get_exif(self):
+        exifsubset = []
+
+        model = self.exif.get('Model')
+        if model:
+            exifsubset.append( 'Model: ' + model )
+        extime = self.exif.get('ExposureTime')
+        if extime:
+            exifsubset.append( 'Exposure: ' + str( extime[0]/float(extime[1])) + '(1/'+str(extime[1]/extime[0]) + ')' )
+        aperture = self.exif.get('FNumber')
+        if aperture:
+            exifsubset.append( 'Aperture: f/' + str( aperture[0]/float(aperture[1]) ) )
+        flen = self.exif.get('FocalLength')
+        if flen:
+            exifsubset.append( 'FocalLength: ' + str( flen[0]/float(flen[1]))  + 'mm' )
+        iso = self.exif.get('ISOSpeedRatings')
+        if iso:
+            exifsubset.append( 'ISO speed: ' + str( iso ) )
+
+        return exifsubset
+
+
+
+    def get_histogram(self):
+        return self.im.histogram()
 
 
     def point(self, xy):
@@ -124,7 +200,7 @@ class DisplayImage:
 
 
 
-    def image(self, Tk=True, sobel=False, scale=1.0):
+    def image(self, Tk=True, sobel=False):
         '''Retrieve a copy of the cropped and resized portion of this image.
 
         Default is to return a Tkinter compatible image.
@@ -132,10 +208,14 @@ class DisplayImage:
         @kwarg Tk: True for Tkinter image, False for PIL
         '''
         self.imcopy = self.im.copy()
-        if scale != 1.0:
-            self.imcopy = cv2.resize(self.im, (0,0), fx=scale, fy=scale)
+        if self.scale != 1.0:
+            self.imcopy = cv2.resize(self.im, (0,0), fx=self.scale, fy=self.scale)
         x0,y0,x1,y1 = self.cropbox
-        self.imcopy = self.imcopy[y0:y1,x0:x1]
+        dx = (x1-x0)/2
+        dy = (y1-y0)/2
+        fx, fy = self.focus
+        print 'crop', fy-dy,fy+dy,fx-dx,fx+dx
+        self.imcopy = self.imcopy[fy-dy:fy+dy,fx-dx:fx+dx]
 #        self.imcopy.thumbnail(tuple([int(each * self.scale) for each in self.size]))
         if sobel:
 #            self.imcopy = self.imcopy.filter(ImageFilter.FIND_EDGES)
